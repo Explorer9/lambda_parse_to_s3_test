@@ -36,25 +36,47 @@ class FAQHTMLParser(HTMLParser):
         self.current_element = tag
         self.current_attrs = attrs_dict
         
-        # Check for FAQ containers
+        # Check for FAQ containers - make case insensitive and more flexible
         if tag == 'div':
-            class_attr = attrs_dict.get('class', '')
-            if 'regions-help-new-answer-content' in class_attr or 'regions-help-new-answer-container' in class_attr:
+            class_attr = attrs_dict.get('class', '').lower()
+            if ('regions-help-new-answer-content' in class_attr or 
+                'regions-help-new-answer-container' in class_attr or
+                'help-answer-content' in class_attr or
+                'answer-content' in class_attr or
+                'faq-content' in class_attr):
                 self.in_faq_container = True
+                print(f"Found FAQ container with class: {attrs_dict.get('class', '')}")
         
-        # Check for question headers
-        if tag in ['h1', 'h2', 'h3'] and self.in_faq_container:
-            class_attr = attrs_dict.get('class', '')
-            if 'regions-help-new-answer-title' in class_attr or not class_attr:
+        # Also check for any div that might contain FAQ content (broader search)
+        if tag == 'div' and not self.in_faq_container:
+            class_attr = attrs_dict.get('class', '').lower()
+            id_attr = attrs_dict.get('id', '').lower()
+            if ('answer' in class_attr or 'faq' in class_attr or 
+                'help' in class_attr or 'content' in class_attr or
+                'answer' in id_attr or 'faq' in id_attr):
+                # Don't set in_faq_container yet, but mark as potential
+                pass
+        
+        # Check for question headers - be more flexible
+        if tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            class_attr = attrs_dict.get('class', '').lower()
+            if (self.in_faq_container or 
+                'title' in class_attr or 
+                'question' in class_attr or
+                'help' in class_attr):
                 self.in_question = True
                 self.text_buffer = []
+                print(f"Found potential question header: {tag} with class: {attrs_dict.get('class', '')}")
         
-        # Check for answer div
-        if tag == 'div' and self.in_faq_container:
-            class_attr = attrs_dict.get('class', '')
-            if 'regions-help-new-answer' in class_attr:
+        # Check for answer div - be more flexible
+        if tag == 'div':
+            class_attr = attrs_dict.get('class', '').lower()
+            if (self.in_faq_container and 
+                ('answer' in class_attr or 'content' in class_attr)) or \
+               ('regions-help-new-answer' in class_attr):
                 self.in_answer = True
                 self.text_buffer = []
+                print(f"Found answer div with class: {attrs_dict.get('class', '')}")
         
         # Handle links
         if tag == 'a' and attrs_dict.get('href'):
@@ -146,15 +168,32 @@ class FAQHTMLParser(HTMLParser):
                     self.text_buffer.append(clean_data)
 
 def fetch_webpage(url):
-    """Fetch webpage content using urllib"""
+    """Fetch webpage content using urllib with better headers"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none'
         }
         
         request = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(request, timeout=30) as response:
-            content = response.read().decode('utf-8')
+            content = response.read()
+            
+            # Handle gzip encoding
+            if response.info().get('Content-Encoding') == 'gzip':
+                import gzip
+                content = gzip.decompress(content)
+            
+            # Decode content
+            content = content.decode('utf-8', errors='ignore')
+            print(f"Successfully fetched {len(content)} characters from {url}")
             return content
     except Exception as e:
         print(f"Error fetching webpage {url}: {str(e)}")
@@ -162,9 +201,85 @@ def fetch_webpage(url):
 
 def parse_faq_content(html_content):
     """Parse FAQ content from HTML using custom parser"""
+    print(f"Parsing HTML content of length: {len(html_content)}")
+    
+    # Add some debugging - look for common patterns
+    if 'routing' in html_content.lower():
+        print("✓ Found 'routing' in content")
+    if 'answer' in html_content.lower():
+        print("✓ Found 'answer' in content")
+    if 'question' in html_content.lower():
+        print("✓ Found 'question' in content")
+    
+    # Try to find any table with routing numbers as fallback
+    import re
+    routing_pattern = r'\b\d{9}\b'
+    routing_matches = re.findall(routing_pattern, html_content)
+    if routing_matches:
+        print(f"✓ Found potential routing numbers: {routing_matches[:5]}")
+    
     parser = FAQHTMLParser()
     parser.feed(html_content)
+    
+    print(f"Parser found {len(parser.faqs)} FAQs")
+    
+    # If no FAQs found, try a simpler approach
+    if not parser.faqs:
+        print("No FAQs found with specific parsing, trying generic approach...")
+        generic_faqs = extract_generic_content(html_content)
+        if generic_faqs:
+            return generic_faqs
+    
     return parser.faqs
+
+def extract_generic_content(html_content):
+    """Fallback method to extract any meaningful content"""
+    faqs = []
+    
+    # Simple regex patterns to find question-answer pairs
+    import re
+    
+    # Look for headings followed by content
+    heading_pattern = r'<h[1-6][^>]*>([^<]+)</h[1-6]>'
+    headings = re.findall(heading_pattern, html_content, re.IGNORECASE)
+    
+    if headings:
+        print(f"Found {len(headings)} headings: {headings[:3]}")
+        
+        # Create a simple FAQ from the main content
+        # Find the main content area
+        main_content = ""
+        
+        # Look for common content patterns
+        content_patterns = [
+            r'<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)</div>',
+            r'<div[^>]*class="[^"]*answer[^"]*"[^>]*>(.*?)</div>',
+            r'<main[^>]*>(.*?)</main>',
+            r'<article[^>]*>(.*?)</article>'
+        ]
+        
+        for pattern in content_patterns:
+            matches = re.findall(pattern, html_content, re.DOTALL | re.IGNORECASE)
+            if matches:
+                main_content = matches[0]
+                break
+        
+        if main_content:
+            # Clean HTML tags
+            clean_content = re.sub(r'<[^>]+>', ' ', main_content)
+            clean_content = re.sub(r'\s+', ' ', clean_content).strip()
+            
+            if len(clean_content) > 100:  # Only if we have substantial content
+                faq_item = {
+                    'question': headings[0] if headings else 'FAQ Content',
+                    'answer': clean_content,
+                    'tables': [],
+                    'lists': []
+                }
+                faqs.append(faq_item)
+                print(f"Created generic FAQ with {len(clean_content)} characters")
+    
+    return faqs
 
 def create_faq_text_content(faq_item):
     """Create formatted text content for FAQ"""
@@ -265,12 +380,18 @@ def handler(event, context):
             
             # Parse FAQ content
             faqs = parse_faq_content(html_content)
+            print(f"Found {len(faqs)} FAQs on {url}")
             
             if not faqs:
+                # Try to extract at least some content for debugging
+                preview = html_content[:500] if html_content else "No content"
+                print(f"Content preview: {preview}")
+                
                 results.append({
                     'url': url,
                     'status': 'warning',
-                    'message': 'No FAQs found on this page'
+                    'message': 'No FAQs found on this page',
+                    'content_length': len(html_content) if html_content else 0
                 })
                 continue
             
