@@ -31,3 +31,17 @@ $conversation_history$\
 User: ORIGINAL (text="$query$")  \
 Bot:\
 }
+
+
+$output_format_instructions$
+{
+  "Action": "FUNCTION",
+  "name": "GlobalDataSource",
+  "parameters": {
+    "standalone_question": "<rephrased or original standalone question>",
+    "additional_queries": [
+      "<optional: decomposed query 1>",
+      "<optional: decomposed query 2>"
+    ]
+  }
+}
