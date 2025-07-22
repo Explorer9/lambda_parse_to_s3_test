@@ -1,0 +1,32 @@
+flowchart TD
+    subgraph "Ingestion Phase"
+        A[📄 Operating Documents] --> B["🔍 Document Processing<br/>(AWS Lambda)"]
+        B --> C{"🎯 Disclosure Detection<br/>& Segregation"}
+        
+        C --> D["📋 Extract Disclosures<br/>Store separately"]
+        C --> E["📝 Process Main Content<br/>Replace/Link disclosures"]
+        
+        D --> F["💾 Disclosures Database<br/>(Amazon S3)"]
+        E --> G["📚 Processed Documents<br/>with disclosure links"]
+        
+        F --> H["🔗 Link disclosures back<br/>to source documents<br/>(metadata)"]
+        G --> H
+        H --> I["🧠 Amazon Bedrock<br/>Knowledge Base<br/>(Combined RAG)"]
+    end
+    
+    subgraph "Query Phase"
+        J[👤 Banker asks question] --> K["🌐 AWS API Gateway<br/>Single Entry Point"]
+        K --> L["⚡ AWS Lambda Function<br/>Unified Query Handler"]
+        
+        L --> I
+        I --> M["🔍 Retrieve relevant chunks<br/>+ Associated disclosures"]
+        M --> N["🤖 Generate comprehensive answer<br/>with disclosures included"]
+        N --> O[📋 Return answer to banker]
+    end
+    
+    style A fill:#e3f2fd
+    style F fill:#e8f5e8
+    style I fill:#ff9900,color:#fff
+    style K fill:#ff9900,color:#fff
+    style L fill:#ff9900,color:#fff
+    style O fill:#ffebee
