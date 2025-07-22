@@ -1,0 +1,24 @@
+flowchart TD
+    A[Banker asks question] --> B[API Gateway]
+    B --> C{Question Screening<br/>Simple vs Complex}
+    
+    C -->|Simple Query<br/>Fact picking| D[Lambda Function 1]
+    C -->|Complex Query<br/>Needs disclosures/context| E[Lambda Function 2]
+    
+    D --> F[Bedrock Knowledge Base RAG<br/>Standard retrieval]
+    F --> G[Generate answer from<br/>retrieved chunks]
+    G --> I[Return answer to banker]
+    
+    E --> H[Bedrock Knowledge Base RAG<br/>Enhanced retrieval]
+    H --> J[Retrieve relevant chunks<br/>+ Get full documents]
+    J --> K[Generate answer with<br/>full document context]
+    K --> I
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
+    style E fill:#e8f5e8
+    style F fill:#fff9c4
+    style H fill:#fff9c4
+    style I fill:#ffebee
