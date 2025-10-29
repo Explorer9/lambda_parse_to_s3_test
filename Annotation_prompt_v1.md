@@ -38,10 +38,10 @@ Chain the intent forward through multiple continuation turns
 
 Example:
 
-Turn 0: current_intent = "Money Movement", previous_intent = "no_intent"
-Turn 1: current_intent = "continuation", previous_intent = "Money Movement"
-Turn 2: current_intent = "continuation", previous_intent = "Money Movement" (NOT "continuation")
-Turn 3: current_intent = "Card Maintenance", previous_intent = "Money Movement"
+-Turn 0: current_intent = "Money Movement", previous_intent = "no_intent"
+-Turn 1: current_intent = "continuation", previous_intent = "Money Movement"
+-Turn 2: current_intent = "continuation", previous_intent = "Money Movement" (NOT "continuation")
+-Turn 3: current_intent = "Card Maintenance", previous_intent = "Money Movement"
 
 Rule: previous_intent always refers to the last substantive banking intent from the previous customer turn, skipping over any "continuation" labels.
 
