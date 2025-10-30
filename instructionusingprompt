@@ -1,0 +1,55 @@
+I'm uploading a .txt file containing banking conversations in JSONL format (one JSON array per line). Each array contains conversation turns with context.
+
+Annotate each CUSTOMER turn using the intent definitions from the attached banking_intent_definitions.md file.
+
+CRITICAL RULES:
+1. DO NOT write code or use regex - use only your judgment and reasoning
+2. Read each conversation naturally as a human would
+3. Consider full context to understand customer intent
+4. Output as CSV with these columns: conversation_id,turn_id,previous_intent,current_intent,isboundary,dialogueact
+
+CSV FORMAT REQUIREMENTS:
+- Include header row
+- Boolean values: true or false (lowercase)
+- One row per customer turn only (skip agent turns)
+
+ANNOTATION RULES:
+- First turn: previous_intent = no_intent
+- Subsequent turns: previous_intent = last customer turn's intent
+- When current_intent = continuation, previous_intent should be the actual banking intent being continued (not "continuation")
+- isboundary = true for new topics, false for continuation
+- Dialogue act priority: request > problem_statement > question > provide_information > acknowledgment
+
+Please process the uploaded conversations file and provide the annotated CSV output.
+```
+
+---
+
+## What to upload to Copilot:
+
+1. **banking_intent_definitions.md** - The full guidelines document I provided earlier
+2. **conversations.txt** - Your JSONL file renamed to .txt
+
+---
+
+## If Copilot tries to write code:
+
+If Copilot starts generating Python/code, immediately interrupt with:
+```
+STOP. Do not write code. Read the conversations yourself and annotate them using your judgment. Process each conversation turn by turn, thinking through the intent like a human annotator would.
+```
+
+---
+
+## Alternative Approach (if Copilot insists on coding):
+
+Break it into smaller batches:
+```
+I've uploaded the definitions file and conversations. 
+
+Process the first 5-10 conversations MANUALLY without code:
+1. Read each conversation
+2. Understand the customer's intent using the definitions
+3. Output the CSV rows for those conversations
+
+Do NOT write a script - annotate them yourself using reasoning.
