@@ -3,24 +3,28 @@
 # --------------------------------------------------------------------------------
 # Paste the FULL text of the Refactored Instructions we generated earlier here.
 # (I have included the Critical Changes summary here, but you can paste the full doc if you prefer)
+# --------------------------------------------------------------------------------
+# 1. CONFIGURATION
+# --------------------------------------------------------------------------------
+
 NEW_GUIDELINES = """
-OFFICIAL ANNOTATION GUIDELINES (HYBRID MODEL):
+*** CRITICAL RULES (PRIORITY) ***
+1. LOANS & MORTGAGES:
+   - Apply/Modify -> 'Account Management'
+   - View Balance/Rate -> 'Account Details'
+   - Pay -> 'Money Movement'
+   - NEVER classify Loans as 'Investments'.
+   
+2. INTENT = ACTION:
+   - Ignore the product noun. Focus on the Verb (Apply, Check, Pay).
 
-1. INTENT = ACTION (VERB)
-   - Do not classify based on the product (Noun).
-   - "Apply for [Product]" -> Account Management
-   - "Check balance of [Product]" -> Account Details
-   - "Pay [Product]" -> Money Movement
+3. DIALOGUE ACTS:
+   - "Can you [do action]?" is a REQUEST, not a question.
 
-2. LOAN & MORTGAGE RULES (CRITICAL CHANGE):
-   - Loans are NEVER 'Investments'.
-   - Applying/Modifying a Loan -> Account Management
-   - Viewing Loan Balance/Rate -> Account Details
-   - Paying a Loan -> Money Movement
-
-3. DIALOGUE ACT PRIORITY:
-   - request > problem_statement > question
-   - Rule: "Can you help me transfer?" is a REQUEST, not a question.
+*** DETAILED ANNOTATION DEFINITIONS ***
+(Paste your full generated document content here if you want the model to have definitions for things like 'Card Maintenance' or 'Security')
+...
+...
 """
 
 # --------------------------------------------------------------------------------
