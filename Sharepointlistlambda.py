@@ -183,3 +183,163 @@ def get_sharepoint_list(site_url, list_name, access_token):
         }
     ]
 }
+
+
+
+
+
+import json
+import boto3
+import os
+from typing import Dict, List, Any
+
+# Initialize Kendra client
+kendra = boto3.client('kendra')
+
+def lambda_handler(event, context):
+    """
+    Lambda function to query Kendra index and retrieve results with metadata
+    
+    Expected event structure:
+    {
+        "query": "your search query",
+        "index_id": "your-kendra-index-id",  # Optional if set as env variable
+        "max_results": 10  # Optional, default is 10
+    }
+    """
+    
+    try:
+        # Extract parameters from event
+        query = event.get('query')
+        index_id = event.get('index_id', os.environ.get('KENDRA_INDEX_ID'))
+        max_results = event.get('max_results', 10)
+        
+        # Validate required parameters
+        if not query:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Query parameter is required'})
+            }
+        
+        if not index_id:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Kendra index_id is required'})
+            }
+        
+        # Query Kendra
+        response = kendra.query(
+            IndexId=index_id,
+            QueryText=query,
+            PageSize=max_results,
+            AttributeFilter={
+                'AndAllFilters': []  # Add filters here if needed
+            }
+        )
+        
+        # Process results
+        results = process_kendra_results(response)
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json'
+            },
+            'body': json.dumps({
+                'query': query,
+                'total_results': len(results),
+                'results': results
+            }, indent=2, default=str)
+        }
+        
+    except Exception as e:
+        print(f"Error querying Kendra: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': 'Internal server error',
+                'message': str(e)
+            })
+        }
+
+
+def process_kendra_results(response: Dict) -> List[Dict[str, Any]]:
+    """
+    Process Kendra query results and extract all metadata
+    
+    Args:
+        response: Kendra query response
+        
+    Returns:
+        List of processed results with metadata
+    """
+    processed_results = []
+    
+    # Process query result items
+    if 'ResultItems' in response:
+        for idx, item in enumerate(response['ResultItems']):
+            result = {
+                'rank': idx + 1,
+                'id': item.get('Id'),
+                'type': item.get('Type'),  # DOCUMENT or QUESTION_ANSWER or ANSWER
+                'score': item.get('ScoreAttributes', {}).get('ScoreConfidence'),
+                'document_title': item.get('DocumentTitle', {}).get('Text'),
+                'document_excerpt': item.get('DocumentExcerpt', {}).get('Text'),
+                'document_uri': item.get('DocumentURI'),
+                'feedback_token': item.get('FeedbackToken'),
+                'metadata': {}
+            }
+            
+            # Extract all document attributes (metadata/custom fields)
+            if 'DocumentAttributes' in item:
+                for attr in item['DocumentAttributes']:
+                    key = attr.get('Key')
+                    value = attr.get('Value')
+                    
+                    # Handle different value types
+                    if value:
+                        if 'StringValue' in value:
+                            result['metadata'][key] = value['StringValue']
+                        elif 'StringListValue' in value:
+                            result['metadata'][key] = value['StringListValue']
+                        elif 'LongValue' in value:
+                            result['metadata'][key] = value['LongValue']
+                        elif 'DateValue' in value:
+                            result['metadata'][key] = value['DateValue']
+            
+            # Extract highlights (relevant text excerpts)
+            if 'DocumentExcerpt' in item and 'Highlights' in item['DocumentExcerpt']:
+                result['highlights'] = []
+                for highlight in item['DocumentExcerpt']['Highlights']:
+                    result['highlights'].append({
+                        'begin_offset': highlight.get('BeginOffset'),
+                        'end_offset': highlight.get('EndOffset'),
+                        'top_answer': highlight.get('TopAnswer', False),
+                        'type': highlight.get('Type')
+                    })
+            
+            # Additional excerpt information if available
+            if 'AdditionalAttributes' in item:
+                result['additional_attributes'] = []
+                for add_attr in item['AdditionalAttributes']:
+                    result['additional_attributes'].append({
+                        'key': add_attr.get('Key'),
+                        'value': add_attr.get('Value', {}).get('TextWithHighlightsValue', {}).get('Text')
+                    })
+            
+            processed_results.append(result)
+    
+    return processed_results
+
+
+# Example usage for testing locally
+if __name__ == "__main__":
+    # Test event
+    test_event = {
+        "query": "What is the project status?",
+        "index_id": "your-index-id-here",
+        "max_results": 5
+    }
+    
+    result = lambda_handler(test_event, None)
+    print(json.dumps(result, indent=2, default=str))
