@@ -343,3 +343,291 @@ if __name__ == "__main__":
     
     result = lambda_handler(test_event, None)
     print(json.dumps(result, indent=2, default=str))
+
+
+
+
+
+import json
+import boto3
+import os
+from typing import Dict, List, Any
+
+# Initialize Kendra client
+kendra = boto3.client('kendra')
+
+def lambda_handler(event, context):
+    """
+    Lambda function to query Kendra and retrieve results with disclosure fields
+    
+    Expected event structure:
+    {
+        "query": "your search query",
+        "index_id": "your-kendra-index-id",  # Optional if set as env variable
+        "max_results": 10,  # Optional, default is 10
+        "filters": {  # Optional filters
+            "disclosure_sitelevel": "Level1",
+            "disclosure_id": "DISC-001"
+        }
+    }
+    """
+    
+    try:
+        # Extract parameters from event
+        query = event.get('query')
+        index_id = event.get('index_id', os.environ.get('KENDRA_INDEX_ID'))
+        max_results = event.get('max_results', 10)
+        filters = event.get('filters', {})
+        
+        # Validate required parameters
+        if not query:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Query parameter is required'})
+            }
+        
+        if not index_id:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Kendra index_id is required'})
+            }
+        
+        # Build query parameters
+        query_params = {
+            'IndexId': index_id,
+            'QueryText': query,
+            'PageSize': max_results
+        }
+        
+        # Add attribute filters if provided
+        if filters:
+            attribute_filter = build_attribute_filter(filters)
+            if attribute_filter:
+                query_params['AttributeFilter'] = attribute_filter
+        
+        # Query Kendra
+        response = kendra.query(**query_params)
+        
+        # Process results
+        results = process_kendra_results(response)
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json'
+            },
+            'body': json.dumps({
+                'query': query,
+                'filters_applied': filters if filters else None,
+                'total_results': len(results),
+                'results': results
+            }, indent=2, default=str)
+        }
+        
+    except Exception as e:
+        print(f"Error querying Kendra: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': 'Internal server error',
+                'message': str(e)
+            })
+        }
+
+
+def build_attribute_filter(filters: Dict) -> Dict:
+    """
+    Build Kendra AttributeFilter from filter dictionary
+    
+    Args:
+        filters: Dictionary of filter conditions
+        
+    Returns:
+        AttributeFilter dictionary or None
+    """
+    
+    filter_conditions = []
+    
+    # Handle disclosure_sitelevel filter
+    if 'disclosure_sitelevel' in filters:
+        filter_conditions.append({
+            'EqualsTo': {
+                'Key': 'disclosure_sitelevel',
+                'Value': {
+                    'StringValue': str(filters['disclosure_sitelevel'])
+                }
+            }
+        })
+    
+    # Handle disclosure_id filter
+    if 'disclosure_id' in filters:
+        filter_conditions.append({
+            'EqualsTo': {
+                'Key': 'disclosure_id',
+                'Value': {
+                    'StringValue': str(filters['disclosure_id'])
+                }
+            }
+        })
+    
+    # Handle other filters dynamically
+    for key, value in filters.items():
+        if key in ['disclosure_sitelevel', 'disclosure_id']:
+            continue  # Already handled above
+        
+        if isinstance(value, str):
+            filter_conditions.append({
+                'EqualsTo': {
+                    'Key': key,
+                    'Value': {
+                        'StringValue': value
+                    }
+                }
+            })
+        elif isinstance(value, int):
+            filter_conditions.append({
+                'EqualsTo': {
+                    'Key': key,
+                    'Value': {
+                        'LongValue': value
+                    }
+                }
+            })
+        elif isinstance(value, list):
+            filter_conditions.append({
+                'ContainsAny': {
+                    'Key': key,
+                    'Value': {
+                        'StringListValue': value
+                    }
+                }
+            })
+    
+    # Return appropriate filter structure
+    if len(filter_conditions) == 0:
+        return None
+    elif len(filter_conditions) == 1:
+        return filter_conditions[0]
+    else:
+        return {
+            'AndAllFilters': filter_conditions
+        }
+
+
+def process_kendra_results(response: Dict) -> List[Dict[str, Any]]:
+    """
+    Process Kendra query results and extract all metadata including disclosure fields
+    
+    Args:
+        response: Kendra query response
+        
+    Returns:
+        List of processed results with disclosure fields extracted
+    """
+    
+    processed_results = []
+    
+    # Process query result items
+    if 'ResultItems' in response:
+        for idx, item in enumerate(response['ResultItems']):
+            result = {
+                'rank': idx + 1,
+                'id': item.get('Id'),
+                'type': item.get('Type'),  # DOCUMENT, QUESTION_ANSWER, ANSWER
+                'score': item.get('ScoreAttributes', {}).get('ScoreConfidence'),
+                'document_title': item.get('DocumentTitle', {}).get('Text'),
+                'document_excerpt': item.get('DocumentExcerpt', {}).get('Text'),
+                'document_uri': item.get('DocumentURI'),
+                'feedback_token': item.get('FeedbackToken'),
+                
+                # Disclosure custom fields (extracted from DocumentAttributes)
+                'disclosure_sitelevel': None,
+                'disclosure_id': None,
+                
+                # All metadata
+                'metadata': {}
+            }
+            
+            # Extract all document attributes (metadata/custom fields)
+            if 'DocumentAttributes' in item:
+                for attr in item['DocumentAttributes']:
+                    key = attr.get('Key')
+                    value = attr.get('Value')
+                    
+                    # Handle different value types
+                    if value:
+                        actual_value = None
+                        
+                        if 'StringValue' in value:
+                            actual_value = value['StringValue']
+                        elif 'StringListValue' in value:
+                            actual_value = value['StringListValue']
+                        elif 'LongValue' in value:
+                            actual_value = value['LongValue']
+                        elif 'DateValue' in value:
+                            actual_value = value['DateValue']
+                        
+                        # Store in metadata dictionary
+                        if actual_value is not None:
+                            result['metadata'][key] = actual_value
+                            
+                            # Extract disclosure fields to top level for easy access
+                            if key == 'disclosure_sitelevel':
+                                result['disclosure_sitelevel'] = actual_value
+                            elif key == 'disclosure_id':
+                                result['disclosure_id'] = actual_value
+            
+            # Extract highlights (relevant text excerpts)
+            if 'DocumentExcerpt' in item and 'Highlights' in item['DocumentExcerpt']:
+                result['highlights'] = []
+                for highlight in item['DocumentExcerpt']['Highlights']:
+                    result['highlights'].append({
+                        'begin_offset': highlight.get('BeginOffset'),
+                        'end_offset': highlight.get('EndOffset'),
+                        'top_answer': highlight.get('TopAnswer', False),
+                        'type': highlight.get('Type')
+                    })
+            
+            # Additional attributes if available
+            if 'AdditionalAttributes' in item:
+                result['additional_attributes'] = []
+                for add_attr in item['AdditionalAttributes']:
+                    attr_value = add_attr.get('Value', {})
+                    text_with_highlights = attr_value.get('TextWithHighlightsValue', {})
+                    
+                    result['additional_attributes'].append({
+                        'key': add_attr.get('Key'),
+                        'text': text_with_highlights.get('Text'),
+                        'highlights': text_with_highlights.get('Highlights', [])
+                    })
+            
+            processed_results.append(result)
+    
+    return processed_results
+
+
+# Example usage for local testing
+if __name__ == "__main__":
+    # Test event without filters
+    test_event_1 = {
+        "query": "project documents",
+        "index_id": "your-index-id-here",
+        "max_results": 5
+    }
+    
+    # Test event with disclosure filters
+    test_event_2 = {
+        "query": "project documents",
+        "index_id": "your-index-id-here",
+        "max_results": 5,
+        "filters": {
+            "disclosure_sitelevel": "Level1",
+            "disclosure_id": "DISC-001"
+        }
+    }
+    
+    result = lambda_handler(test_event_2, None)
+    print(json.dumps(result, indent=2, default=str))
